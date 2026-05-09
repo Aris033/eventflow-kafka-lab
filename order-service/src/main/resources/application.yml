@@ -2,7 +2,7 @@ spring:
   application:
     name: order-service
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/eventflow
+    url: jdbc:postgresql://localhost:5433/eventflow
     username: eventflow
     password: eventflow
   jpa:

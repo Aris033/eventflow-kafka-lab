@@ -32,8 +32,10 @@ docker compose ps
 
 - Kafka UI: http://localhost:8090
 - Adminer: http://localhost:8085
-- PostgreSQL: `localhost:5432`
+- PostgreSQL: `localhost:5433`
 - Kafka: `localhost:9092`
+
+PostgreSQL is published on host port `5433` to avoid conflicts with a PostgreSQL server already running locally on `5432`. Containers still use `eventflow-postgres:5432` inside the Docker network.
 
 ## Adminer Credentials
 
@@ -78,6 +80,7 @@ Implemented so far:
 - Local Docker infrastructure for PostgreSQL, Kafka, Kafka UI, and Adminer.
 - Order creation with PostgreSQL persistence and Kafka event publication.
 - Payment processing from Kafka events with basic idempotency and PostgreSQL persistence.
+- Notification processing from payment events with basic idempotency and PostgreSQL persistence.
 
 Not implemented yet:
 
@@ -85,7 +88,7 @@ Not implemented yet:
 - Advanced retries or DLQ processing.
 - Advanced observability.
 
-## Order And Payment Flow
+## Order, Payment And Notification Flow
 
 Start the infrastructure:
 
@@ -93,11 +96,12 @@ Start the infrastructure:
 docker compose up -d
 ```
 
-Start `order-service` and `payment-service` from the IDE, or from the repository root:
+Start `order-service`, `payment-service`, and `notification-service` from the IDE, or from the repository root:
 
 ```bash
 mvn -pl order-service spring-boot:run
 mvn -pl payment-service spring-boot:run
+mvn -pl notification-service spring-boot:run
 ```
 
 Create an order that should produce a completed payment:
@@ -122,15 +126,30 @@ Query a payment by order id:
 curl http://localhost:8082/api/payments/order/{orderId}
 ```
 
+Query notifications by order id:
+
+```bash
+curl http://localhost:8083/api/notifications/order/{orderId}
+```
+
 Useful runtime URLs:
 
 - Order Swagger: http://localhost:8081/swagger-ui.html
 - Payment Swagger: http://localhost:8082/swagger-ui.html
+- Notification Swagger: http://localhost:8083/swagger-ui.html
 - Order health: http://localhost:8081/actuator/health
 - Payment health: http://localhost:8082/actuator/health
+- Notification health: http://localhost:8083/actuator/health
 - Kafka UI: http://localhost:8090
 - Adminer: http://localhost:8085
 
+Relevant database tables:
+
+- `payment_schema.payments`
+- `payment_schema.processed_events`
+- `notification_schema.notifications`
+- `notification_schema.processed_events`
+
 Expected flow:
 
-`POST /api/orders` creates an order in `order_schema.orders`, publishes `OrderCreatedEvent` to `orders.events`, `payment-service` consumes it, stores the payment in `payment_schema.payments`, stores the processed event id in `payment_schema.processed_events`, and publishes a payment result event to `payments.events`.
+`POST /api/orders` creates an order in `order_schema.orders`, publishes `OrderCreatedEvent` to `orders.events`, `payment-service` consumes it, stores the payment in `payment_schema.payments`, stores the processed event id in `payment_schema.processed_events`, and publishes a payment result event to `payments.events`. `notification-service` consumes payment result events, stores notifications in `notification_schema.notifications`, stores processed event ids in `notification_schema.processed_events`, and publishes notification result events to `notifications.events`.

@@ -1,6 +1,28 @@
 spring:
   application:
     name: notification-service
+  datasource:
+    url: jdbc:postgresql://localhost:5433/eventflow
+    username: eventflow
+    password: eventflow
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: notification_schema
+    open-in-view: false
+  flyway:
+    schemas: notification_schema
+    default-schema: notification_schema
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+    producer:
+      properties:
+        spring.json.add.type.headers: true
 
 server:
   port: 8083

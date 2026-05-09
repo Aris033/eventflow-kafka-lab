@@ -8,7 +8,7 @@ spring:
       auto-offset-reset: earliest
     producer:
       properties:
-        spring.json.add.type.headers: false
+        spring.json.add.type.headers: true
   datasource:
     url: jdbc:postgresql://eventflow-postgres:5432/eventflow
     username: eventflow
