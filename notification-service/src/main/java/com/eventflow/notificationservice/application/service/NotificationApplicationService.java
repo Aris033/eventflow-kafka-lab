@@ -15,13 +15,17 @@ import com.eventflow.notificationservice.application.usecase.SendPaymentComplete
 import com.eventflow.notificationservice.application.usecase.SendPaymentFailedNotificationUseCase;
 import com.eventflow.notificationservice.domain.model.Notification;
 import com.eventflow.notificationservice.domain.model.NotificationStatus;
-import com.eventflow.notificationservice.domain.port.NotificationEventPublisherPort;
+import com.eventflow.notificationservice.domain.model.OutboxEvent;
 import com.eventflow.notificationservice.domain.port.NotificationRepositoryPort;
+import com.eventflow.notificationservice.domain.port.OutboxEventRepositoryPort;
 import com.eventflow.notificationservice.domain.port.ProcessedEventRepositoryPort;
+import com.eventflow.sharedevents.EventTopics;
 import com.eventflow.sharedevents.NotificationFailedEvent;
 import com.eventflow.sharedevents.NotificationSentEvent;
 import com.eventflow.sharedevents.PaymentCompletedEvent;
 import com.eventflow.sharedevents.PaymentFailedEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,18 +46,21 @@ public class NotificationApplicationService implements
 
     private final NotificationRepositoryPort notificationRepository;
     private final ProcessedEventRepositoryPort processedEventRepository;
-    private final NotificationEventPublisherPort notificationEventPublisher;
+    private final OutboxEventRepositoryPort outboxEventRepository;
+    private final ObjectMapper objectMapper;
     private final String recipientOverride;
 
     public NotificationApplicationService(
             NotificationRepositoryPort notificationRepository,
             ProcessedEventRepositoryPort processedEventRepository,
-            NotificationEventPublisherPort notificationEventPublisher,
+            OutboxEventRepositoryPort outboxEventRepository,
+            ObjectMapper objectMapper,
             @Value("${eventflow.notification.simulation.recipient-override:}") String recipientOverride
     ) {
         this.notificationRepository = notificationRepository;
         this.processedEventRepository = processedEventRepository;
-        this.notificationEventPublisher = notificationEventPublisher;
+        this.outboxEventRepository = outboxEventRepository;
+        this.objectMapper = objectMapper;
         this.recipientOverride = recipientOverride;
     }
 
@@ -121,7 +128,7 @@ public class NotificationApplicationService implements
                     notification.channel().name(),
                     notification.recipient()
             );
-            notificationEventPublisher.publish(sentEvent);
+            saveOutboxEvent(notification.id(), sentEvent.eventId(), sentEvent.eventType().name(), notification.orderId().toString(), serialize(sentEvent));
             log.info(
                     "Notification sent: eventId={}, correlationId={}, orderId={}, notificationId={}",
                     sentEvent.eventId(),
@@ -140,7 +147,7 @@ public class NotificationApplicationService implements
                 eventRecipient(notification.recipient()),
                 notification.failureReason()
         );
-        notificationEventPublisher.publish(failedEvent);
+        saveOutboxEvent(notification.id(), failedEvent.eventId(), failedEvent.eventType().name(), notification.orderId().toString(), serialize(failedEvent));
         log.info(
                 "Notification failed: eventId={}, correlationId={}, orderId={}, notificationId={}, reason={}",
                 failedEvent.eventId(),
@@ -168,5 +175,25 @@ public class NotificationApplicationService implements
 
     private String eventRecipient(String recipient) {
         return recipient == null || recipient.isBlank() ? "unknown@eventflow.local" : recipient;
+    }
+
+    private void saveOutboxEvent(UUID aggregateId, UUID eventId, String eventType, String messageKey, String payload) {
+        outboxEventRepository.save(OutboxEvent.pending(
+                aggregateId,
+                "NOTIFICATION",
+                eventId,
+                eventType,
+                EventTopics.NOTIFICATIONS_EVENTS,
+                messageKey,
+                payload
+        ));
+    }
+
+    private String serialize(Object event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Could not serialize notification event", ex);
+        }
     }
 }

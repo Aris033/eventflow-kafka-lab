@@ -27,3 +27,11 @@ management:
     web:
       exposure:
         include: health,info
+
+eventflow:
+  outbox:
+    publisher:
+      enabled: false
+      fixed-delay: 5000
+      batch-size: 20
+      max-retries: 3

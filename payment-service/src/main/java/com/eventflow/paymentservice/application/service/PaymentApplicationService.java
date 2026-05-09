@@ -15,12 +15,16 @@ import com.eventflow.paymentservice.application.usecase.ProcessPaymentUseCase;
 import com.eventflow.paymentservice.domain.exception.PaymentNotFoundException;
 import com.eventflow.paymentservice.domain.model.Payment;
 import com.eventflow.paymentservice.domain.model.PaymentStatus;
-import com.eventflow.paymentservice.domain.port.PaymentEventPublisherPort;
+import com.eventflow.paymentservice.domain.model.OutboxEvent;
 import com.eventflow.paymentservice.domain.port.PaymentRepositoryPort;
+import com.eventflow.paymentservice.domain.port.OutboxEventRepositoryPort;
 import com.eventflow.paymentservice.domain.port.ProcessedEventRepositoryPort;
+import com.eventflow.sharedevents.EventTopics;
 import com.eventflow.sharedevents.OrderCreatedEvent;
 import com.eventflow.sharedevents.PaymentCompletedEvent;
 import com.eventflow.sharedevents.PaymentFailedEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,18 +41,21 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
 
     private final PaymentRepositoryPort paymentRepository;
     private final ProcessedEventRepositoryPort processedEventRepository;
-    private final PaymentEventPublisherPort paymentEventPublisher;
+    private final OutboxEventRepositoryPort outboxEventRepository;
+    private final ObjectMapper objectMapper;
     private final String failOnCustomerIdPrefix;
 
     public PaymentApplicationService(
             PaymentRepositoryPort paymentRepository,
             ProcessedEventRepositoryPort processedEventRepository,
-            PaymentEventPublisherPort paymentEventPublisher,
+            OutboxEventRepositoryPort outboxEventRepository,
+            ObjectMapper objectMapper,
             @Value("${eventflow.payment.simulation.fail-on-customer-id-prefix:fail-payment-processing}") String failOnCustomerIdPrefix
     ) {
         this.paymentRepository = paymentRepository;
         this.processedEventRepository = processedEventRepository;
-        this.paymentEventPublisher = paymentEventPublisher;
+        this.outboxEventRepository = outboxEventRepository;
+        this.objectMapper = objectMapper;
         this.failOnCustomerIdPrefix = failOnCustomerIdPrefix;
     }
 
@@ -79,7 +86,8 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
                     payment.orderId(),
                     payment.amount()
             );
-            paymentEventPublisher.publish(completedEvent);
+            saveOutboxEvent(payment.id(), completedEvent.eventId(), completedEvent.eventType().name(), EventTopics.PAYMENTS_EVENTS,
+                    payment.orderId().toString(), serialize(completedEvent));
             log.info(
                     "Payment completed: eventId={}, correlationId={}, orderId={}, paymentId={}",
                     event.eventId(),
@@ -95,7 +103,8 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
                     payment.amount(),
                     payment.failureReason()
             );
-            paymentEventPublisher.publish(failedEvent);
+            saveOutboxEvent(payment.id(), failedEvent.eventId(), failedEvent.eventType().name(), EventTopics.PAYMENTS_EVENTS,
+                    payment.orderId().toString(), serialize(failedEvent));
             log.info(
                     "Payment failed: eventId={}, correlationId={}, orderId={}, paymentId={}, reason={}",
                     event.eventId(),
@@ -125,5 +134,17 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
                 && !failOnCustomerIdPrefix.isBlank()
                 && customerId != null
                 && customerId.startsWith(failOnCustomerIdPrefix);
+    }
+
+    private void saveOutboxEvent(UUID aggregateId, UUID eventId, String eventType, String topic, String messageKey, String payload) {
+        outboxEventRepository.save(OutboxEvent.pending(aggregateId, "PAYMENT", eventId, eventType, topic, messageKey, payload));
+    }
+
+    private String serialize(Object event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Could not serialize payment event", ex);
+        }
     }
 }

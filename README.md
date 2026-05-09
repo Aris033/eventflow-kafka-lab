@@ -51,7 +51,7 @@ PostgreSQL is published on host port `5433` to avoid conflicts with a PostgreSQL
 - `payments.events`
 - `notifications.events`
 
-DLT topic names are defined in `shared-events` for future use, but DLQ handling is not implemented yet.
+DLT topic names are defined in `shared-events` and used by the Kafka consumer retry configuration.
 
 ## Planned PostgreSQL Schemas
 
@@ -70,6 +70,12 @@ Build all Maven modules from the repository root:
 mvn clean install
 ```
 
+Run tests:
+
+```bash
+mvn clean test
+```
+
 ## Current Scope
 
 Implemented so far:
@@ -83,10 +89,11 @@ Implemented so far:
 - Notification processing from payment events with basic idempotency and PostgreSQL persistence.
 - Audit timeline storage for order, payment, and notification events.
 - Controlled Kafka retries with Dead Letter Topics for consumer failures.
+- Polling-based Transactional Outbox Pattern in producer services.
+- Unit and application tests for domain behavior, idempotency, outbox creation, outbox publishing, and audit registration.
 
 Not implemented yet:
 
-- Outbox pattern.
 - Advanced observability.
 
 ## Order, Payment And Notification Flow
@@ -169,13 +176,54 @@ Relevant database tables:
 
 - `payment_schema.payments`
 - `payment_schema.processed_events`
+- `order_schema.outbox_events`
+- `payment_schema.outbox_events`
 - `notification_schema.notifications`
 - `notification_schema.processed_events`
+- `notification_schema.outbox_events`
 - `audit_schema.audit_events`
 
 Expected flow:
 
-`POST /api/orders` creates an order in `order_schema.orders`, publishes `OrderCreatedEvent` to `orders.events`, `payment-service` consumes it, stores the payment in `payment_schema.payments`, stores the processed event id in `payment_schema.processed_events`, and publishes a payment result event to `payments.events`. `notification-service` consumes payment result events, stores notifications in `notification_schema.notifications`, stores processed event ids in `notification_schema.processed_events`, and publishes notification result events to `notifications.events`. `audit-service` consumes `orders.events`, `payments.events`, and `notifications.events`, and stores the complete event timeline in `audit_schema.audit_events`.
+`POST /api/orders` creates an order in `order_schema.orders` and stores an `OrderCreatedEvent` in `order_schema.outbox_events`. The order outbox publisher sends it to `orders.events`. `payment-service` consumes it, stores the payment and processed event id, then stores a payment result event in `payment_schema.outbox_events`. The payment outbox publisher sends it to `payments.events`. `notification-service` consumes payment events, stores notifications and processed event ids, then stores notification result events in `notification_schema.outbox_events`. The notification outbox publisher sends them to `notifications.events`. `audit-service` consumes `orders.events`, `payments.events`, and `notifications.events`, and stores the complete event timeline in `audit_schema.audit_events`.
+
+## Transactional Outbox
+
+The Transactional Outbox Pattern stores integration events in the same database transaction as the business change. A background publisher later sends those events to Kafka, reducing the risk of inconsistencies between the database and the message broker.
+
+This project uses a polling-based outbox in:
+
+- `order-service`
+- `payment-service`
+- `notification-service`
+
+Each producer owns its own outbox table:
+
+- `order_schema.outbox_events`
+- `payment_schema.outbox_events`
+- `notification_schema.outbox_events`
+
+Inspect outbox state from Adminer or DBeaver:
+
+```sql
+SELECT * FROM order_schema.outbox_events ORDER BY created_at DESC;
+SELECT * FROM payment_schema.outbox_events ORDER BY created_at DESC;
+SELECT * FROM notification_schema.outbox_events ORDER BY created_at DESC;
+```
+
+Outbox publisher settings:
+
+```yaml
+eventflow:
+  outbox:
+    publisher:
+      enabled: true
+      fixed-delay: 5000
+      batch-size: 20
+      max-retries: 3
+```
+
+For tests, schedulers are disabled with `eventflow.outbox.publisher.enabled=false`.
 
 ## Audit Timeline
 

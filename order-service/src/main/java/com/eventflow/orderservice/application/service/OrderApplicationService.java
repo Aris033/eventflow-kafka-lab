@@ -13,9 +13,13 @@ import com.eventflow.orderservice.application.usecase.CreateOrderUseCase;
 import com.eventflow.orderservice.application.usecase.GetOrderUseCase;
 import com.eventflow.orderservice.domain.exception.OrderNotFoundException;
 import com.eventflow.orderservice.domain.model.Order;
-import com.eventflow.orderservice.domain.port.OrderEventPublisherPort;
+import com.eventflow.orderservice.domain.model.OutboxEvent;
 import com.eventflow.orderservice.domain.port.OrderRepositoryPort;
+import com.eventflow.orderservice.domain.port.OutboxEventRepositoryPort;
+import com.eventflow.sharedevents.EventTopics;
 import com.eventflow.sharedevents.OrderCreatedEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -30,11 +34,17 @@ public class OrderApplicationService implements CreateOrderUseCase, GetOrderUseC
     private static final Logger log = LoggerFactory.getLogger(OrderApplicationService.class);
 
     private final OrderRepositoryPort orderRepository;
-    private final OrderEventPublisherPort orderEventPublisher;
+    private final OutboxEventRepositoryPort outboxEventRepository;
+    private final ObjectMapper objectMapper;
 
-    public OrderApplicationService(OrderRepositoryPort orderRepository, OrderEventPublisherPort orderEventPublisher) {
+    public OrderApplicationService(
+            OrderRepositoryPort orderRepository,
+            OutboxEventRepositoryPort outboxEventRepository,
+            ObjectMapper objectMapper
+    ) {
         this.orderRepository = orderRepository;
-        this.orderEventPublisher = orderEventPublisher;
+        this.outboxEventRepository = outboxEventRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -49,7 +59,15 @@ public class OrderApplicationService implements CreateOrderUseCase, GetOrderUseC
                 order.customerId(),
                 order.totalAmount()
         );
-        orderEventPublisher.publish(event);
+        outboxEventRepository.save(OutboxEvent.pending(
+                order.id(),
+                "ORDER",
+                event.eventId(),
+                event.eventType().name(),
+                EventTopics.ORDERS_EVENTS,
+                order.id().toString(),
+                serialize(event)
+        ));
         return order;
     }
 
@@ -58,5 +76,13 @@ public class OrderApplicationService implements CreateOrderUseCase, GetOrderUseC
     public Order getOrder(UUID orderId) {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(orderId));
+    }
+
+    private String serialize(OrderCreatedEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Could not serialize OrderCreatedEvent", ex);
+        }
     }
 }

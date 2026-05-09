@@ -36,3 +36,14 @@ springdoc:
     path: /swagger-ui.html
   api-docs:
     path: /v3/api-docs
+
+eventflow:
+  outbox:
+    publisher:
+      enabled: false
+      fixed-delay: 5000
+      batch-size: 20
+      max-retries: 3
+  notification:
+    simulation:
+      recipient-override:

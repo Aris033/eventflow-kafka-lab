@@ -7,11 +7,9 @@
  * GitHub: [Aris033](https://github.com/Aris033)
  */
 
-package com.eventflow.orderservice.domain.port;
+package com.eventflow.orderservice.application.usecase;
 
-import com.eventflow.sharedevents.OrderCreatedEvent;
+public interface PublishPendingOutboxEventsUseCase {
 
-public interface OrderEventPublisherPort {
-
-    void publish(OrderCreatedEvent event);
+    void publishPending();
 }
