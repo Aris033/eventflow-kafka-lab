@@ -23,6 +23,7 @@ import com.eventflow.sharedevents.PaymentCompletedEvent;
 import com.eventflow.sharedevents.PaymentFailedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,20 +38,27 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
     private final PaymentRepositoryPort paymentRepository;
     private final ProcessedEventRepositoryPort processedEventRepository;
     private final PaymentEventPublisherPort paymentEventPublisher;
+    private final String failOnCustomerIdPrefix;
 
     public PaymentApplicationService(
             PaymentRepositoryPort paymentRepository,
             ProcessedEventRepositoryPort processedEventRepository,
-            PaymentEventPublisherPort paymentEventPublisher
+            PaymentEventPublisherPort paymentEventPublisher,
+            @Value("${eventflow.payment.simulation.fail-on-customer-id-prefix:fail-payment-processing}") String failOnCustomerIdPrefix
     ) {
         this.paymentRepository = paymentRepository;
         this.processedEventRepository = processedEventRepository;
         this.paymentEventPublisher = paymentEventPublisher;
+        this.failOnCustomerIdPrefix = failOnCustomerIdPrefix;
     }
 
     @Override
     @Transactional
     public void process(OrderCreatedEvent event) {
+        if (shouldFailProcessing(event.customerId())) {
+            throw new IllegalStateException("Controlled payment processing failure for customerId " + event.customerId());
+        }
+
         if (processedEventRepository.existsByEventId(event.eventId())) {
             log.info(
                     "Duplicate OrderCreatedEvent ignored: eventId={}, correlationId={}, orderId={}",
@@ -110,5 +118,12 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
     @Transactional(readOnly = true)
     public List<Payment> listPayments() {
         return paymentRepository.findAll();
+    }
+
+    private boolean shouldFailProcessing(String customerId) {
+        return failOnCustomerIdPrefix != null
+                && !failOnCustomerIdPrefix.isBlank()
+                && customerId != null
+                && customerId.startsWith(failOnCustomerIdPrefix);
     }
 }

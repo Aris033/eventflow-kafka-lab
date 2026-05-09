@@ -1,6 +1,30 @@
 spring:
   application:
     name: audit-service
+  datasource:
+    url: jdbc:postgresql://localhost:5433/eventflow
+    username: eventflow
+    password: eventflow
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: audit_schema
+    open-in-view: false
+  flyway:
+    schemas: audit_schema
+    default-schema: audit_schema
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: audit-service
+      auto-offset-reset: earliest
+
+eventflow:
+  audit:
+    simulation:
+      fail-on-event-type:
 
 server:
   port: 8084

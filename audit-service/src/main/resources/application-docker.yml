@@ -1,12 +1,30 @@
 spring:
   application:
     name: audit-service
-  kafka:
-    bootstrap-servers: eventflow-kafka:9092
   datasource:
     url: jdbc:postgresql://eventflow-postgres:5432/eventflow
     username: eventflow
     password: eventflow
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: audit_schema
+    open-in-view: false
+  flyway:
+    schemas: audit_schema
+    default-schema: audit_schema
+  kafka:
+    bootstrap-servers: eventflow-kafka:9092
+    consumer:
+      group-id: audit-service
+      auto-offset-reset: earliest
+
+eventflow:
+  audit:
+    simulation:
+      fail-on-event-type:
 
 server:
   port: 8084
@@ -16,3 +34,9 @@ management:
     web:
       exposure:
         include: health,info
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs

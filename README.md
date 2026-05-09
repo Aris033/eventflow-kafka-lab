@@ -81,11 +81,12 @@ Implemented so far:
 - Order creation with PostgreSQL persistence and Kafka event publication.
 - Payment processing from Kafka events with basic idempotency and PostgreSQL persistence.
 - Notification processing from payment events with basic idempotency and PostgreSQL persistence.
+- Audit timeline storage for order, payment, and notification events.
+- Controlled Kafka retries with Dead Letter Topics for consumer failures.
 
 Not implemented yet:
 
 - Outbox pattern.
-- Advanced retries or DLQ processing.
 - Advanced observability.
 
 ## Order, Payment And Notification Flow
@@ -102,6 +103,7 @@ Start `order-service`, `payment-service`, and `notification-service` from the ID
 mvn -pl order-service spring-boot:run
 mvn -pl payment-service spring-boot:run
 mvn -pl notification-service spring-boot:run
+mvn -pl audit-service spring-boot:run
 ```
 
 Create an order that should produce a completed payment:
@@ -132,14 +134,34 @@ Query notifications by order id:
 curl http://localhost:8083/api/notifications/order/{orderId}
 ```
 
+Query the audit timeline by order id:
+
+```bash
+curl http://localhost:8084/api/audit/events/order/{orderId}
+```
+
+Query the audit timeline by correlation id:
+
+```bash
+curl http://localhost:8084/api/audit/events/correlation/{correlationId}
+```
+
+List all audited events:
+
+```bash
+curl http://localhost:8084/api/audit/events
+```
+
 Useful runtime URLs:
 
 - Order Swagger: http://localhost:8081/swagger-ui.html
 - Payment Swagger: http://localhost:8082/swagger-ui.html
 - Notification Swagger: http://localhost:8083/swagger-ui.html
+- Audit Swagger: http://localhost:8084/swagger-ui.html
 - Order health: http://localhost:8081/actuator/health
 - Payment health: http://localhost:8082/actuator/health
 - Notification health: http://localhost:8083/actuator/health
+- Audit health: http://localhost:8084/actuator/health
 - Kafka UI: http://localhost:8090
 - Adminer: http://localhost:8085
 
@@ -149,7 +171,36 @@ Relevant database tables:
 - `payment_schema.processed_events`
 - `notification_schema.notifications`
 - `notification_schema.processed_events`
+- `audit_schema.audit_events`
 
 Expected flow:
 
-`POST /api/orders` creates an order in `order_schema.orders`, publishes `OrderCreatedEvent` to `orders.events`, `payment-service` consumes it, stores the payment in `payment_schema.payments`, stores the processed event id in `payment_schema.processed_events`, and publishes a payment result event to `payments.events`. `notification-service` consumes payment result events, stores notifications in `notification_schema.notifications`, stores processed event ids in `notification_schema.processed_events`, and publishes notification result events to `notifications.events`.
+`POST /api/orders` creates an order in `order_schema.orders`, publishes `OrderCreatedEvent` to `orders.events`, `payment-service` consumes it, stores the payment in `payment_schema.payments`, stores the processed event id in `payment_schema.processed_events`, and publishes a payment result event to `payments.events`. `notification-service` consumes payment result events, stores notifications in `notification_schema.notifications`, stores processed event ids in `notification_schema.processed_events`, and publishes notification result events to `notifications.events`. `audit-service` consumes `orders.events`, `payments.events`, and `notifications.events`, and stores the complete event timeline in `audit_schema.audit_events`.
+
+## Audit Timeline
+
+`audit-service` stores every event with its `eventId`, `correlationId`, `orderId`, `eventType`, source topic, Kafka key, original JSON payload, event time, and receive time.
+
+Use the audit endpoints to reconstruct the event timeline of an order or a correlation:
+
+```bash
+curl http://localhost:8084/api/audit/events/order/{orderId}
+curl http://localhost:8084/api/audit/events/correlation/{correlationId}
+curl http://localhost:8084/api/audit/events/type/ORDER_CREATED
+```
+
+## Retries And DLT
+
+Kafka consumers use controlled retries with a fixed 1 second backoff and 3 total delivery attempts. When processing still fails, the message is published to the matching Dead Letter Topic:
+
+- `orders.events` -> `orders.events.dlt`
+- `payments.events` -> `payments.events.dlt`
+- `notifications.events` -> `notifications.events.dlt`
+
+DLT messages can be inspected in Kafka UI at http://localhost:8090.
+
+Controlled failure examples:
+
+- Payment processing: create an order with `customerId` starting with `fail-payment-processing` to send the `OrderCreatedEvent` to `orders.events.dlt` after retries.
+- Notification processing: set `eventflow.notification.simulation.recipient-override=fail@eventflow.local` to force payment events into `payments.events.dlt`.
+- Audit processing: set `eventflow.audit.simulation.fail-on-event-type=ORDER_CREATED` or another event type to force events from the source topic into the matching DLT.

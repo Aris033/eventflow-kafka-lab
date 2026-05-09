@@ -24,6 +24,7 @@ import com.eventflow.sharedevents.PaymentCompletedEvent;
 import com.eventflow.sharedevents.PaymentFailedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,15 +43,18 @@ public class NotificationApplicationService implements
     private final NotificationRepositoryPort notificationRepository;
     private final ProcessedEventRepositoryPort processedEventRepository;
     private final NotificationEventPublisherPort notificationEventPublisher;
+    private final String recipientOverride;
 
     public NotificationApplicationService(
             NotificationRepositoryPort notificationRepository,
             ProcessedEventRepositoryPort processedEventRepository,
-            NotificationEventPublisherPort notificationEventPublisher
+            NotificationEventPublisherPort notificationEventPublisher,
+            @Value("${eventflow.notification.simulation.recipient-override:}") String recipientOverride
     ) {
         this.notificationRepository = notificationRepository;
         this.processedEventRepository = processedEventRepository;
         this.notificationEventPublisher = notificationEventPublisher;
+        this.recipientOverride = recipientOverride;
     }
 
     @Override
@@ -60,9 +64,8 @@ public class NotificationApplicationService implements
             return;
         }
 
-        Notification notification = notificationRepository.save(Notification.send(
+        Notification notification = notificationRepository.save(createNotification(
                 event.orderId(),
-                recipientFor(event.orderId()),
                 "Payment completed notification sent"
         ));
         processedEventRepository.save(event.eventId(), event.eventType());
@@ -76,9 +79,8 @@ public class NotificationApplicationService implements
             return;
         }
 
-        Notification notification = notificationRepository.save(Notification.send(
+        Notification notification = notificationRepository.save(createNotification(
                 event.orderId(),
-                recipientFor(event.orderId()),
                 "Payment failed notification sent"
         ));
         processedEventRepository.save(event.eventId(), event.eventType());
@@ -150,7 +152,18 @@ public class NotificationApplicationService implements
     }
 
     private String recipientFor(UUID orderId) {
+        if (recipientOverride != null && !recipientOverride.isBlank()) {
+            return recipientOverride;
+        }
         return "customer-" + orderId + "@eventflow.local";
+    }
+
+    private Notification createNotification(UUID orderId, String message) {
+        String recipient = recipientFor(orderId);
+        if (recipient.toLowerCase().contains("fail")) {
+            throw new IllegalStateException("Controlled notification processing failure for recipient " + recipient);
+        }
+        return Notification.send(orderId, recipient, message);
     }
 
     private String eventRecipient(String recipient) {

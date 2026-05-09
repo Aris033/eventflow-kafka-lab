@@ -38,3 +38,8 @@ springdoc:
     path: /swagger-ui.html
   api-docs:
     path: /v3/api-docs
+
+eventflow:
+  payment:
+    simulation:
+      fail-on-customer-id-prefix: fail-payment-processing
