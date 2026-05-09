@@ -7,7 +7,7 @@ public interface BaseEvent {
 
     UUID eventId();
 
-    String correlationId();
+    UUID correlationId();
 
     EventType eventType();
 

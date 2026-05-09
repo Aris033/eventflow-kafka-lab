@@ -1,6 +1,25 @@
 spring:
   application:
     name: order-service
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/eventflow
+    username: eventflow
+    password: eventflow
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: order_schema
+    open-in-view: false
+  flyway:
+    schemas: order_schema
+    default-schema: order_schema
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      properties:
+        spring.json.add.type.headers: false
 
 server:
   port: 8081

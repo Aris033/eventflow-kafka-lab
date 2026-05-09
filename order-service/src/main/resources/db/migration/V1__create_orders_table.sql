@@ -1,0 +1,10 @@
+CREATE SCHEMA IF NOT EXISTS order_schema;
+
+CREATE TABLE IF NOT EXISTS order_schema.orders (
+    id UUID PRIMARY KEY,
+    customer_id VARCHAR(255) NOT NULL,
+    total_amount NUMERIC(19, 2) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+);

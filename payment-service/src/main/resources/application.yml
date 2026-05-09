@@ -1,6 +1,28 @@
 spring:
   application:
     name: payment-service
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/eventflow
+    username: eventflow
+    password: eventflow
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: payment_schema
+    open-in-view: false
+  flyway:
+    schemas: payment_schema
+    default-schema: payment_schema
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+    producer:
+      properties:
+        spring.json.add.type.headers: false
 
 server:
   port: 8082

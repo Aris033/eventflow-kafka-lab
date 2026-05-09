@@ -1,1 +1,121 @@
 name: eventflow-kafka-lab
+
+services:
+  eventflow-postgres:
+    image: postgres:16
+    container_name: eventflow-postgres
+    environment:
+      POSTGRES_DB: eventflow
+      POSTGRES_USER: eventflow
+      POSTGRES_PASSWORD: eventflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventflow -d eventflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eventflow-network
+
+  eventflow-kafka:
+    image: apache/kafka:3.7.2
+    container_name: eventflow-kafka
+    user: "0:0"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://localhost:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://eventflow-kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9094"
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - eventflow-network
+
+  eventflow-kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: eventflow-kafka-ui
+    depends_on:
+      eventflow-kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: eventflow-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: eventflow-kafka:9092
+    ports:
+      - "8090:8080"
+    networks:
+      - eventflow-network
+
+  eventflow-adminer:
+    image: adminer:latest
+    container_name: eventflow-adminer
+    depends_on:
+      eventflow-postgres:
+        condition: service_healthy
+    ports:
+      - "8085:8080"
+    networks:
+      - eventflow-network
+
+  # Future service placeholders. Add Dockerfiles before enabling them.
+  #
+  # order-service:
+  #   build: ./order-service
+  #   ports:
+  #     - "8081:8080"
+  #   depends_on:
+  #     eventflow-postgres:
+  #       condition: service_healthy
+  #     eventflow-kafka:
+  #       condition: service_healthy
+  #   networks:
+  #     - eventflow-network
+  #
+  # payment-service:
+  #   build: ./payment-service
+  #   ports:
+  #     - "8082:8080"
+  #   networks:
+  #     - eventflow-network
+  #
+  # notification-service:
+  #   build: ./notification-service
+  #   ports:
+  #     - "8083:8080"
+  #   networks:
+  #     - eventflow-network
+  #
+  # audit-service:
+  #   build: ./audit-service
+  #   ports:
+  #     - "8084:8080"
+  #   networks:
+  #     - eventflow-network
+
+volumes:
+  postgres_data:
+  kafka_data:
+
+networks:
+  eventflow-network:
+    name: eventflow-network

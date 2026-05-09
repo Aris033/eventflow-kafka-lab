@@ -1,6 +1,12 @@
 spring:
   application:
     name: audit-service
+  kafka:
+    bootstrap-servers: eventflow-kafka:9092
+  datasource:
+    url: jdbc:postgresql://eventflow-postgres:5432/eventflow
+    username: eventflow
+    password: eventflow
 
 server:
   port: 8084
