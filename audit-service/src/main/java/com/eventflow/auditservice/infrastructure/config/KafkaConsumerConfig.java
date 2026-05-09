@@ -9,6 +9,7 @@
 
 package com.eventflow.auditservice.infrastructure.config;
 
+import com.eventflow.auditservice.application.observability.AuditMetrics;
 import com.eventflow.sharedevents.EventTopics;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -59,19 +60,33 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
-    public DefaultErrorHandler auditKafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
+    public DefaultErrorHandler auditKafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate, AuditMetrics auditMetrics) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 kafkaTemplate,
-                (record, exception) -> new TopicPartition(dltTopic(record), record.partition())
+                (record, exception) -> {
+                    auditMetrics.eventSentToDlt(record.topic());
+                    String dltTopic = dltTopic(record);
+                    log.error(
+                            "Sending audit event to DLT after retries: topic={}, dltTopic={}, key={}, error={}",
+                            record.topic(),
+                            dltTopic,
+                            record.key(),
+                            exception.getMessage()
+                    );
+                    return new TopicPartition(dltTopic, record.partition());
+                }
         );
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(1_000L, 2L));
-        errorHandler.setRetryListeners((record, exception, deliveryAttempt) -> log.warn(
-                "Retrying audit event consumption: topic={}, key={}, attempt={}, error={}",
-                record.topic(),
-                record.key(),
-                deliveryAttempt,
-                exception.getMessage()
-        ));
+        errorHandler.setRetryListeners((record, exception, deliveryAttempt) -> {
+            auditMetrics.kafkaConsumerError(record.topic());
+            log.warn(
+                    "Retrying audit event consumption: topic={}, key={}, attempt={}, error={}",
+                    record.topic(),
+                    record.key(),
+                    deliveryAttempt,
+                    exception.getMessage()
+            );
+        });
         return errorHandler;
     }
 

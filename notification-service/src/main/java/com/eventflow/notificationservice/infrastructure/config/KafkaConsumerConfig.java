@@ -9,6 +9,7 @@
 
 package com.eventflow.notificationservice.infrastructure.config;
 
+import com.eventflow.notificationservice.application.observability.NotificationMetrics;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.TopicPartition;
@@ -57,11 +58,12 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
-    public DefaultErrorHandler notificationKafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
+    public DefaultErrorHandler notificationKafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate, NotificationMetrics notificationMetrics) {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
                 kafkaTemplate,
                 (record, exception) -> {
                     String dltTopic = "payments.events.dlt";
+                    notificationMetrics.eventSentToDlt(record.topic());
                     log.error(
                             "Sending event to DLT after retries: topic={}, dltTopic={}, key={}, error={}",
                             record.topic(),
@@ -73,13 +75,16 @@ public class KafkaConsumerConfig {
                 }
         );
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, new FixedBackOff(1_000L, 2L));
-        errorHandler.setRetryListeners((record, exception, deliveryAttempt) -> log.warn(
-                "Retrying notification event consumption: topic={}, key={}, attempt={}, error={}",
-                record.topic(),
-                record.key(),
-                deliveryAttempt,
-                exception.getMessage()
-        ));
+        errorHandler.setRetryListeners((record, exception, deliveryAttempt) -> {
+            notificationMetrics.kafkaConsumerError(record.topic());
+            log.warn(
+                    "Retrying notification event consumption: topic={}, key={}, attempt={}, error={}",
+                    record.topic(),
+                    record.key(),
+                    deliveryAttempt,
+                    exception.getMessage()
+            );
+        });
         return errorHandler;
     }
 }

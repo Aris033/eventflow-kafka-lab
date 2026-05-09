@@ -10,6 +10,7 @@
 package com.eventflow.orderservice.application.service;
 
 import com.eventflow.orderservice.application.usecase.PublishPendingOutboxEventsUseCase;
+import com.eventflow.orderservice.application.observability.OrderMetrics;
 import com.eventflow.orderservice.domain.model.OutboxEvent;
 import com.eventflow.orderservice.domain.port.OutboxEventPublisherPort;
 import com.eventflow.orderservice.domain.port.OutboxEventRepositoryPort;
@@ -26,17 +27,20 @@ public class OutboxEventApplicationService implements PublishPendingOutboxEvents
 
     private final OutboxEventRepositoryPort outboxEventRepository;
     private final OutboxEventPublisherPort outboxEventPublisher;
+    private final OrderMetrics orderMetrics;
     private final int batchSize;
     private final int maxRetries;
 
     public OutboxEventApplicationService(
             OutboxEventRepositoryPort outboxEventRepository,
             OutboxEventPublisherPort outboxEventPublisher,
+            OrderMetrics orderMetrics,
             @Value("${eventflow.outbox.publisher.batch-size:20}") int batchSize,
             @Value("${eventflow.outbox.publisher.max-retries:3}") int maxRetries
     ) {
         this.outboxEventRepository = outboxEventRepository;
         this.outboxEventPublisher = outboxEventPublisher;
+        this.orderMetrics = orderMetrics;
         this.batchSize = batchSize;
         this.maxRetries = maxRetries;
     }
@@ -48,9 +52,11 @@ public class OutboxEventApplicationService implements PublishPendingOutboxEvents
             try {
                 outboxEventPublisher.publish(event);
                 outboxEventRepository.save(event.markPublished());
+                orderMetrics.outboxEventPublished();
                 log.info("Outbox event published: eventId={}, topic={}", event.eventId(), event.topic());
             } catch (Exception ex) {
                 outboxEventRepository.save(event.markFailed(ex.getMessage(), maxRetries));
+                orderMetrics.outboxEventPublishFailed();
                 log.warn("Outbox event publication failed: eventId={}, topic={}, error={}", event.eventId(), event.topic(), ex.getMessage());
             }
         }

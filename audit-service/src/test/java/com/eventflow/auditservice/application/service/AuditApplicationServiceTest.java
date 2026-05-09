@@ -1,5 +1,6 @@
 package com.eventflow.auditservice.application.service;
 
+import com.eventflow.auditservice.application.observability.AuditMetrics;
 import com.eventflow.auditservice.domain.model.AuditEvent;
 import com.eventflow.auditservice.domain.port.AuditEventRepositoryPort;
 import com.eventflow.sharedevents.EventTopics;
@@ -21,7 +22,8 @@ import static org.mockito.Mockito.when;
 class AuditApplicationServiceTest {
 
     private final AuditEventRepositoryPort repository = mock(AuditEventRepositoryPort.class);
-    private final AuditApplicationService service = new AuditApplicationService(repository);
+    private final AuditMetrics auditMetrics = mock(AuditMetrics.class);
+    private final AuditApplicationService service = new AuditApplicationService(repository, auditMetrics);
 
     @Test
     void registerStoresAuditEventWithExtractedOrderId() {
@@ -30,6 +32,7 @@ class AuditApplicationServiceTest {
 
         service.register(event, EventTopics.ORDERS_EVENTS, orderId.toString(), "{\"eventType\":\"ORDER_CREATED\"}");
 
+        verify(auditMetrics).eventStored();
         verify(repository).save(org.mockito.ArgumentMatchers.argThat(auditEvent ->
                 auditEvent.eventId().equals(event.eventId())
                         && auditEvent.correlationId().equals(event.correlationId())
@@ -48,6 +51,7 @@ class AuditApplicationServiceTest {
         service.register(event, EventTopics.ORDERS_EVENTS, orderId.toString(), "{}");
 
         verify(repository, never()).save(any());
+        verify(auditMetrics).duplicatedEvent();
     }
 
     @Test

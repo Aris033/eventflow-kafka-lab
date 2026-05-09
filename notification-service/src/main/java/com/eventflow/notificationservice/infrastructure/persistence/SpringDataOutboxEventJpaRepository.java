@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface SpringDataOutboxEventJpaRepository extends JpaRepository<OutboxEventJpaEntity, UUID> {
     List<OutboxEventJpaEntity> findByStatusInAndRetryCountLessThanOrderByCreatedAtAsc(
             Collection<OutboxEventStatus> statuses, int maxRetries, Pageable pageable);
+
+    long countByStatus(OutboxEventStatus status);
 }

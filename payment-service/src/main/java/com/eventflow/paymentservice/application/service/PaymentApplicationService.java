@@ -12,6 +12,7 @@ package com.eventflow.paymentservice.application.service;
 import com.eventflow.paymentservice.application.usecase.GetPaymentUseCase;
 import com.eventflow.paymentservice.application.usecase.ListPaymentsUseCase;
 import com.eventflow.paymentservice.application.usecase.ProcessPaymentUseCase;
+import com.eventflow.paymentservice.application.observability.PaymentMetrics;
 import com.eventflow.paymentservice.domain.exception.PaymentNotFoundException;
 import com.eventflow.paymentservice.domain.model.Payment;
 import com.eventflow.paymentservice.domain.model.PaymentStatus;
@@ -43,6 +44,7 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
     private final ProcessedEventRepositoryPort processedEventRepository;
     private final OutboxEventRepositoryPort outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final PaymentMetrics paymentMetrics;
     private final String failOnCustomerIdPrefix;
 
     public PaymentApplicationService(
@@ -50,12 +52,14 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
             ProcessedEventRepositoryPort processedEventRepository,
             OutboxEventRepositoryPort outboxEventRepository,
             ObjectMapper objectMapper,
+            PaymentMetrics paymentMetrics,
             @Value("${eventflow.payment.simulation.fail-on-customer-id-prefix:fail-payment-processing}") String failOnCustomerIdPrefix
     ) {
         this.paymentRepository = paymentRepository;
         this.processedEventRepository = processedEventRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
+        this.paymentMetrics = paymentMetrics;
         this.failOnCustomerIdPrefix = failOnCustomerIdPrefix;
     }
 
@@ -67,6 +71,7 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
         }
 
         if (processedEventRepository.existsByEventId(event.eventId())) {
+            paymentMetrics.duplicatedEvent();
             log.info(
                     "Duplicate OrderCreatedEvent ignored: eventId={}, correlationId={}, orderId={}",
                     event.eventId(),
@@ -80,6 +85,7 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
         processedEventRepository.save(event.eventId(), event.eventType());
 
         if (payment.status() == PaymentStatus.COMPLETED) {
+            paymentMetrics.paymentCompleted();
             PaymentCompletedEvent completedEvent = PaymentCompletedEvent.create(
                     event.correlationId(),
                     payment.id(),
@@ -96,6 +102,7 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
                     payment.id()
             );
         } else {
+            paymentMetrics.paymentFailed();
             PaymentFailedEvent failedEvent = PaymentFailedEvent.create(
                     event.correlationId(),
                     payment.id(),
@@ -138,6 +145,7 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, GetPaym
 
     private void saveOutboxEvent(UUID aggregateId, UUID eventId, String eventType, String topic, String messageKey, String payload) {
         outboxEventRepository.save(OutboxEvent.pending(aggregateId, "PAYMENT", eventId, eventType, topic, messageKey, payload));
+        paymentMetrics.outboxEventCreated();
     }
 
     private String serialize(Object event) {

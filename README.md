@@ -32,6 +32,8 @@ docker compose ps
 
 - Kafka UI: http://localhost:8090
 - Adminer: http://localhost:8085
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000
 - PostgreSQL: `localhost:5433`
 - Kafka: `localhost:9092`
 
@@ -90,11 +92,12 @@ Implemented so far:
 - Audit timeline storage for order, payment, and notification events.
 - Controlled Kafka retries with Dead Letter Topics for consumer failures.
 - Polling-based Transactional Outbox Pattern in producer services.
+- Local observability with Spring Boot Actuator, Micrometer, Prometheus, Grafana, custom event metrics, outbox metrics, DLT metrics, and correlation-aware logs.
 - Unit and application tests for domain behavior, idempotency, outbox creation, outbox publishing, and audit registration.
 
 Not implemented yet:
 
-- Advanced observability.
+- Kubernetes, API Gateway, frontend, security, CI/CD, and advanced distributed tracing.
 
 ## Order, Payment And Notification Flow
 
@@ -169,8 +172,14 @@ Useful runtime URLs:
 - Payment health: http://localhost:8082/actuator/health
 - Notification health: http://localhost:8083/actuator/health
 - Audit health: http://localhost:8084/actuator/health
+- Order Prometheus metrics: http://localhost:8081/actuator/prometheus
+- Payment Prometheus metrics: http://localhost:8082/actuator/prometheus
+- Notification Prometheus metrics: http://localhost:8083/actuator/prometheus
+- Audit Prometheus metrics: http://localhost:8084/actuator/prometheus
 - Kafka UI: http://localhost:8090
 - Adminer: http://localhost:8085
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000
 
 Relevant database tables:
 
@@ -224,6 +233,77 @@ eventflow:
 ```
 
 For tests, schedulers are disabled with `eventflow.outbox.publisher.enabled=false`.
+
+## Observability
+
+This project includes local observability with Spring Boot Actuator, Micrometer, Prometheus and Grafana. It exposes technical and business metrics for HTTP requests, Kafka event processing, outbox publishing, DLT handling and audit timelines.
+
+Prometheus and Grafana are part of Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+The microservices are still normally started from the IDE or Maven, so Prometheus scrapes them through `host.docker.internal`:
+
+- `host.docker.internal:8081` -> `order-service`
+- `host.docker.internal:8082` -> `payment-service`
+- `host.docker.internal:8083` -> `notification-service`
+- `host.docker.internal:8084` -> `audit-service`
+
+Useful observability URLs:
+
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000
+- Grafana username: `admin`
+- Grafana password: `admin`
+- Order Actuator Prometheus: http://localhost:8081/actuator/prometheus
+- Payment Actuator Prometheus: http://localhost:8082/actuator/prometheus
+- Notification Actuator Prometheus: http://localhost:8083/actuator/prometheus
+- Audit Actuator Prometheus: http://localhost:8084/actuator/prometheus
+
+Grafana is provisioned with Prometheus as the default datasource and an `EventFlow Overview` dashboard. The dashboard covers service health, HTTP traffic, HTTP latency, business events, outbox state, retries/DLT, JVM memory and Hikari database metrics.
+
+Useful Prometheus queries:
+
+```promql
+eventflow_orders_created_total
+eventflow_payments_completed_total
+eventflow_payments_failed_total
+eventflow_notifications_sent_total
+eventflow_notifications_failed_total
+eventflow_audit_events_stored_total
+eventflow_order_outbox_pending
+eventflow_payment_outbox_pending
+eventflow_notification_outbox_pending
+eventflow_order_events_published_total
+eventflow_payment_events_published_total
+eventflow_notification_events_published_total
+eventflow_order_events_publish_failed_total
+eventflow_payment_events_publish_failed_total
+eventflow_notification_events_publish_failed_total
+eventflow_kafka_consumer_errors_total
+eventflow_kafka_events_sent_to_dlt_total
+http_server_requests_seconds_count
+jvm_memory_used_bytes
+hikaricp_connections_active
+```
+
+To see custom metrics move, create a normal order and a payment-failed order:
+
+```bash
+curl -X POST http://localhost:8081/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"customer-1","totalAmount":99.99}'
+
+curl -X POST http://localhost:8081/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"customer-2","totalAmount":1500}'
+```
+
+Micrometer is the instrumentation facade used by the services. Prometheus scrapes the `/actuator/prometheus` endpoints, and Grafana visualizes the scraped metrics. Business counters track orders, payments, notifications, audit events, outbox publishing, consumer errors and DLT sends.
+
+Logs include `service`, `correlationId`, `eventId` and `orderId` when an event is being processed. These IDs are added through MDC in Kafka consumers so related log lines can be followed without turning high-cardinality IDs into metric tags. Metrics intentionally avoid `orderId`, `eventId` and `correlationId` tags because those values would create too many time series.
 
 ## Audit Timeline
 

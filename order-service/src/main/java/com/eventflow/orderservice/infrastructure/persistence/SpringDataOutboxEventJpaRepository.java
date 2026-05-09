@@ -24,4 +24,6 @@ public interface SpringDataOutboxEventJpaRepository extends JpaRepository<Outbox
             int maxRetries,
             Pageable pageable
     );
+
+    long countByStatus(OutboxEventStatus status);
 }

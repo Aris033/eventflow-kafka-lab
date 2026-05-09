@@ -1,5 +1,6 @@
 package com.eventflow.notificationservice.application.service;
 
+import com.eventflow.notificationservice.application.observability.NotificationMetrics;
 import com.eventflow.notificationservice.domain.model.Notification;
 import com.eventflow.notificationservice.domain.model.OutboxEvent;
 import com.eventflow.notificationservice.domain.port.NotificationRepositoryPort;
@@ -25,6 +26,7 @@ class NotificationApplicationServiceTest {
     private final NotificationRepositoryPort notificationRepository = mock(NotificationRepositoryPort.class);
     private final ProcessedEventRepositoryPort processedEventRepository = mock(ProcessedEventRepositoryPort.class);
     private final OutboxEventRepositoryPort outboxEventRepository = mock(OutboxEventRepositoryPort.class);
+    private final NotificationMetrics notificationMetrics = mock(NotificationMetrics.class);
 
     @Test
     void sendPaymentCompletedNotificationCreatesSentOutboxEvent() {
@@ -34,6 +36,8 @@ class NotificationApplicationServiceTest {
         service.send(PaymentCompletedEvent.create(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("99.99")));
 
         verify(processedEventRepository).save(any(UUID.class), any());
+        verify(notificationMetrics).notificationSent();
+        verify(notificationMetrics).outboxEventCreated();
         verify(outboxEventRepository).save(org.mockito.ArgumentMatchers.argThat(event ->
                 event.eventType().equals("NOTIFICATION_SENT")
                         && event.topic().equals("notifications.events")
@@ -60,6 +64,7 @@ class NotificationApplicationServiceTest {
 
         verify(notificationRepository, never()).save(any());
         verify(outboxEventRepository, never()).save(any(OutboxEvent.class));
+        verify(notificationMetrics).duplicatedEvent();
     }
 
     @Test
@@ -76,6 +81,7 @@ class NotificationApplicationServiceTest {
                 processedEventRepository,
                 outboxEventRepository,
                 new ObjectMapper().findAndRegisterModules(),
+                notificationMetrics,
                 recipientOverride
         );
     }

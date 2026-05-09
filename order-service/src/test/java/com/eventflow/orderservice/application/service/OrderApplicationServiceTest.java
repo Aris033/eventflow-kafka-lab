@@ -1,5 +1,6 @@
 package com.eventflow.orderservice.application.service;
 
+import com.eventflow.orderservice.application.observability.OrderMetrics;
 import com.eventflow.orderservice.domain.model.Order;
 import com.eventflow.orderservice.domain.model.OutboxEvent;
 import com.eventflow.orderservice.domain.port.OrderRepositoryPort;
@@ -20,7 +21,13 @@ class OrderApplicationServiceTest {
 
     private final OrderRepositoryPort orderRepository = mock(OrderRepositoryPort.class);
     private final OutboxEventRepositoryPort outboxEventRepository = mock(OutboxEventRepositoryPort.class);
-    private final OrderApplicationService service = new OrderApplicationService(orderRepository, outboxEventRepository, new ObjectMapper().findAndRegisterModules());
+    private final OrderMetrics orderMetrics = mock(OrderMetrics.class);
+    private final OrderApplicationService service = new OrderApplicationService(
+            orderRepository,
+            outboxEventRepository,
+            new ObjectMapper().findAndRegisterModules(),
+            orderMetrics
+    );
 
     @Test
     void createOrderSavesOrderAndOutboxEvent() {
@@ -31,6 +38,8 @@ class OrderApplicationServiceTest {
 
         assertThat(order.customerId()).isEqualTo("customer-1");
         verify(orderRepository).save(any(Order.class));
+        verify(orderMetrics).orderCreated();
+        verify(orderMetrics).outboxEventCreated();
         verify(outboxEventRepository).save(org.mockito.ArgumentMatchers.argThat(event ->
                 event.topic().equals(EventTopics.ORDERS_EVENTS)
                         && event.aggregateId().equals(order.id())

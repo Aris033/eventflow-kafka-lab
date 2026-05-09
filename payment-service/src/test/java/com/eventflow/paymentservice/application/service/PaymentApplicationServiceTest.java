@@ -1,5 +1,6 @@
 package com.eventflow.paymentservice.application.service;
 
+import com.eventflow.paymentservice.application.observability.PaymentMetrics;
 import com.eventflow.paymentservice.domain.model.OutboxEvent;
 import com.eventflow.paymentservice.domain.model.Payment;
 import com.eventflow.paymentservice.domain.port.OutboxEventRepositoryPort;
@@ -23,11 +24,13 @@ class PaymentApplicationServiceTest {
     private final PaymentRepositoryPort paymentRepository = mock(PaymentRepositoryPort.class);
     private final ProcessedEventRepositoryPort processedEventRepository = mock(ProcessedEventRepositoryPort.class);
     private final OutboxEventRepositoryPort outboxEventRepository = mock(OutboxEventRepositoryPort.class);
+    private final PaymentMetrics paymentMetrics = mock(PaymentMetrics.class);
     private final PaymentApplicationService service = new PaymentApplicationService(
             paymentRepository,
             processedEventRepository,
             outboxEventRepository,
             new ObjectMapper().findAndRegisterModules(),
+            paymentMetrics,
             "fail-payment-processing"
     );
 
@@ -38,6 +41,8 @@ class PaymentApplicationServiceTest {
         service.process(orderCreated(new BigDecimal("99.99")));
 
         verify(processedEventRepository).save(any(UUID.class), any());
+        verify(paymentMetrics).paymentCompleted();
+        verify(paymentMetrics).outboxEventCreated();
         verify(outboxEventRepository).save(org.mockito.ArgumentMatchers.argThat(event ->
                 event.eventType().equals("PAYMENT_COMPLETED")
                         && event.topic().equals("payments.events")
@@ -50,6 +55,7 @@ class PaymentApplicationServiceTest {
 
         service.process(orderCreated(new BigDecimal("1500")));
 
+        verify(paymentMetrics).paymentFailed();
         verify(outboxEventRepository).save(org.mockito.ArgumentMatchers.argThat(event ->
                 event.eventType().equals("PAYMENT_FAILED")
                         && event.topic().equals("payments.events")
@@ -65,6 +71,7 @@ class PaymentApplicationServiceTest {
 
         verify(paymentRepository, never()).save(any());
         verify(outboxEventRepository, never()).save(any(OutboxEvent.class));
+        verify(paymentMetrics).duplicatedEvent();
     }
 
     private OrderCreatedEvent orderCreated(BigDecimal amount) {

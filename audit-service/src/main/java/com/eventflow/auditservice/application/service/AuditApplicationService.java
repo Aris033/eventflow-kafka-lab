@@ -12,6 +12,7 @@ package com.eventflow.auditservice.application.service;
 import com.eventflow.auditservice.application.usecase.FindAuditEventsByCorrelationIdUseCase;
 import com.eventflow.auditservice.application.usecase.FindAuditEventsByOrderIdUseCase;
 import com.eventflow.auditservice.application.usecase.FindAuditEventsUseCase;
+import com.eventflow.auditservice.application.observability.AuditMetrics;
 import com.eventflow.auditservice.application.usecase.RegisterAuditEventUseCase;
 import com.eventflow.auditservice.domain.model.AuditEvent;
 import com.eventflow.auditservice.domain.port.AuditEventRepositoryPort;
@@ -41,15 +42,18 @@ public class AuditApplicationService implements
     private static final Logger log = LoggerFactory.getLogger(AuditApplicationService.class);
 
     private final AuditEventRepositoryPort auditEventRepository;
+    private final AuditMetrics auditMetrics;
 
-    public AuditApplicationService(AuditEventRepositoryPort auditEventRepository) {
+    public AuditApplicationService(AuditEventRepositoryPort auditEventRepository, AuditMetrics auditMetrics) {
         this.auditEventRepository = auditEventRepository;
+        this.auditMetrics = auditMetrics;
     }
 
     @Override
     @Transactional
     public void register(BaseEvent event, String sourceTopic, String messageKey, String payload) {
         if (auditEventRepository.existsByEventId(event.eventId())) {
+            auditMetrics.duplicatedEvent();
             log.info(
                     "Audit event already registered: eventId={}, correlationId={}, eventType={}",
                     event.eventId(),
@@ -72,6 +76,7 @@ public class AuditApplicationService implements
                     event.occurredAt(),
                     Instant.now()
             ));
+            auditMetrics.eventStored();
             log.info(
                     "Audit event registered: eventId={}, correlationId={}, orderId={}, eventType={}, topic={}",
                     event.eventId(),
@@ -81,6 +86,7 @@ public class AuditApplicationService implements
                     sourceTopic
             );
         } catch (DataIntegrityViolationException ex) {
+            auditMetrics.duplicatedEvent();
             log.info("Audit event duplicate ignored after unique constraint: eventId={}", event.eventId());
         }
     }

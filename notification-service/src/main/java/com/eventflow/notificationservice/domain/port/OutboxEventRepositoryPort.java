@@ -7,4 +7,5 @@ import java.util.List;
 public interface OutboxEventRepositoryPort {
     OutboxEvent save(OutboxEvent outboxEvent);
     List<OutboxEvent> findPublishable(int maxRetries, int batchSize);
+    long countPending();
 }

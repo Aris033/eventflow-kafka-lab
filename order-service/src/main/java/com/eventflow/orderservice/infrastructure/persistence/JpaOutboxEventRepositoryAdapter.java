@@ -41,4 +41,9 @@ public class JpaOutboxEventRepositoryAdapter implements OutboxEventRepositoryPor
                 .map(OutboxEventPersistenceMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public long countPending() {
+        return repository.countByStatus(OutboxEventStatus.PENDING);
+    }
 }

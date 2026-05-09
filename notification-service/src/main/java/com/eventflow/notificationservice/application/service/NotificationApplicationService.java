@@ -11,6 +11,7 @@ package com.eventflow.notificationservice.application.service;
 
 import com.eventflow.notificationservice.application.usecase.GetNotificationsUseCase;
 import com.eventflow.notificationservice.application.usecase.ListNotificationsUseCase;
+import com.eventflow.notificationservice.application.observability.NotificationMetrics;
 import com.eventflow.notificationservice.application.usecase.SendPaymentCompletedNotificationUseCase;
 import com.eventflow.notificationservice.application.usecase.SendPaymentFailedNotificationUseCase;
 import com.eventflow.notificationservice.domain.model.Notification;
@@ -48,6 +49,7 @@ public class NotificationApplicationService implements
     private final ProcessedEventRepositoryPort processedEventRepository;
     private final OutboxEventRepositoryPort outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final NotificationMetrics notificationMetrics;
     private final String recipientOverride;
 
     public NotificationApplicationService(
@@ -55,12 +57,14 @@ public class NotificationApplicationService implements
             ProcessedEventRepositoryPort processedEventRepository,
             OutboxEventRepositoryPort outboxEventRepository,
             ObjectMapper objectMapper,
+            NotificationMetrics notificationMetrics,
             @Value("${eventflow.notification.simulation.recipient-override:}") String recipientOverride
     ) {
         this.notificationRepository = notificationRepository;
         this.processedEventRepository = processedEventRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
+        this.notificationMetrics = notificationMetrics;
         this.recipientOverride = recipientOverride;
     }
 
@@ -110,6 +114,7 @@ public class NotificationApplicationService implements
         if (!processedEventRepository.existsByEventId(eventId)) {
             return false;
         }
+        notificationMetrics.duplicatedEvent();
         log.info(
                 "Duplicate payment event ignored: eventId={}, correlationId={}, orderId={}",
                 eventId,
@@ -121,6 +126,7 @@ public class NotificationApplicationService implements
 
     private void publishResult(UUID correlationId, Notification notification) {
         if (notification.status() == NotificationStatus.SENT) {
+            notificationMetrics.notificationSent();
             NotificationSentEvent sentEvent = NotificationSentEvent.create(
                     correlationId,
                     notification.id(),
@@ -148,6 +154,7 @@ public class NotificationApplicationService implements
                 notification.failureReason()
         );
         saveOutboxEvent(notification.id(), failedEvent.eventId(), failedEvent.eventType().name(), notification.orderId().toString(), serialize(failedEvent));
+        notificationMetrics.notificationFailed();
         log.info(
                 "Notification failed: eventId={}, correlationId={}, orderId={}, notificationId={}, reason={}",
                 failedEvent.eventId(),
@@ -187,6 +194,7 @@ public class NotificationApplicationService implements
                 messageKey,
                 payload
         ));
+        notificationMetrics.outboxEventCreated();
     }
 
     private String serialize(Object event) {

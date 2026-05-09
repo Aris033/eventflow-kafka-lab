@@ -28,7 +28,13 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: order-service
 
 springdoc:
   swagger-ui:
@@ -43,3 +49,7 @@ eventflow:
       fixed-delay: 5000
       batch-size: 20
       max-retries: 3
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} [service=${spring.application.name}, correlationId=%X{correlationId}, eventId=%X{eventId}, orderId=%X{orderId}] - %msg%n"

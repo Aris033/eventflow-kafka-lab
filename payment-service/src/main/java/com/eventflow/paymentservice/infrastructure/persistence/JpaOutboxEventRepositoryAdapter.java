@@ -27,4 +27,9 @@ public class JpaOutboxEventRepositoryAdapter implements OutboxEventRepositoryPor
                         List.of(OutboxEventStatus.PENDING, OutboxEventStatus.FAILED), maxRetries, PageRequest.of(0, batchSize))
                 .stream().map(OutboxEventPersistenceMapper::toDomain).toList();
     }
+
+    @Override
+    public long countPending() {
+        return repository.countByStatus(OutboxEventStatus.PENDING);
+    }
 }

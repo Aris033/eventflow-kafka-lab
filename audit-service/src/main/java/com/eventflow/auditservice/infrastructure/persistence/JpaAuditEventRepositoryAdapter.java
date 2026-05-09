@@ -62,4 +62,9 @@ public class JpaAuditEventRepositoryAdapter implements AuditEventRepositoryPort 
                 .map(AuditEventPersistenceMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public long countAll() {
+        return repository.count();
+    }
 }

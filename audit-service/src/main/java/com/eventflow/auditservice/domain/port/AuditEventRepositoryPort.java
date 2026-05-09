@@ -27,4 +27,6 @@ public interface AuditEventRepositoryPort {
     List<AuditEvent> findByOrderId(UUID orderId);
 
     List<AuditEvent> findByEventType(String eventType);
+
+    long countAll();
 }

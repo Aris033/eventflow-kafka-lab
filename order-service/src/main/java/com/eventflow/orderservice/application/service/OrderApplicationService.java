@@ -11,6 +11,7 @@ package com.eventflow.orderservice.application.service;
 
 import com.eventflow.orderservice.application.usecase.CreateOrderUseCase;
 import com.eventflow.orderservice.application.usecase.GetOrderUseCase;
+import com.eventflow.orderservice.application.observability.OrderMetrics;
 import com.eventflow.orderservice.domain.exception.OrderNotFoundException;
 import com.eventflow.orderservice.domain.model.Order;
 import com.eventflow.orderservice.domain.model.OutboxEvent;
@@ -36,21 +37,25 @@ public class OrderApplicationService implements CreateOrderUseCase, GetOrderUseC
     private final OrderRepositoryPort orderRepository;
     private final OutboxEventRepositoryPort outboxEventRepository;
     private final ObjectMapper objectMapper;
+    private final OrderMetrics orderMetrics;
 
     public OrderApplicationService(
             OrderRepositoryPort orderRepository,
             OutboxEventRepositoryPort outboxEventRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            OrderMetrics orderMetrics
     ) {
         this.orderRepository = orderRepository;
         this.outboxEventRepository = outboxEventRepository;
         this.objectMapper = objectMapper;
+        this.orderMetrics = orderMetrics;
     }
 
     @Override
     @Transactional
     public Order createOrder(String customerId, BigDecimal totalAmount) {
         Order order = orderRepository.save(Order.create(customerId, totalAmount));
+        orderMetrics.orderCreated();
         log.info("Order created: orderId={}, customerId={}, totalAmount={}", order.id(), order.customerId(), order.totalAmount());
 
         OrderCreatedEvent event = OrderCreatedEvent.create(
@@ -68,6 +73,7 @@ public class OrderApplicationService implements CreateOrderUseCase, GetOrderUseC
                 order.id().toString(),
                 serialize(event)
         ));
+        orderMetrics.outboxEventCreated();
         return order;
     }
 

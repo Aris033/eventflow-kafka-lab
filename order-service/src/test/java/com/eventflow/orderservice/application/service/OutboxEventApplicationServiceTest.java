@@ -1,5 +1,6 @@
 package com.eventflow.orderservice.application.service;
 
+import com.eventflow.orderservice.application.observability.OrderMetrics;
 import com.eventflow.orderservice.domain.model.OutboxEvent;
 import com.eventflow.orderservice.domain.model.OutboxEventStatus;
 import com.eventflow.orderservice.domain.port.OutboxEventPublisherPort;
@@ -19,7 +20,8 @@ class OutboxEventApplicationServiceTest {
 
     private final OutboxEventRepositoryPort repository = mock(OutboxEventRepositoryPort.class);
     private final OutboxEventPublisherPort publisher = mock(OutboxEventPublisherPort.class);
-    private final OutboxEventApplicationService service = new OutboxEventApplicationService(repository, publisher, 20, 3);
+    private final OrderMetrics orderMetrics = mock(OrderMetrics.class);
+    private final OutboxEventApplicationService service = new OutboxEventApplicationService(repository, publisher, orderMetrics, 20, 3);
 
     @Test
     void publishPendingMarksEventAsPublished() {
@@ -30,6 +32,7 @@ class OutboxEventApplicationServiceTest {
 
         verify(publisher).publish(event);
         verify(repository).save(org.mockito.ArgumentMatchers.argThat(saved -> saved.status() == OutboxEventStatus.PUBLISHED));
+        verify(orderMetrics).outboxEventPublished();
     }
 
     @Test
@@ -45,6 +48,7 @@ class OutboxEventApplicationServiceTest {
                         && saved.retryCount() == 1
                         && saved.lastError().contains("Kafka unavailable")
         ));
+        verify(orderMetrics).outboxEventPublishFailed();
     }
 
     private OutboxEvent event() {
