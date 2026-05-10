@@ -30,6 +30,7 @@ docker compose ps
 
 ## Useful URLs
 
+- Backoffice UI: http://localhost:8086
 - Kafka UI: http://localhost:8090
 - Adminer: http://localhost:8085
 - Prometheus: http://localhost:9090
@@ -93,6 +94,7 @@ Implemented so far:
 - Controlled Kafka retries with Dead Letter Topics for consumer failures.
 - Polling-based Transactional Outbox Pattern in producer services.
 - Local observability with Spring Boot Actuator, Micrometer, Prometheus, Grafana, custom event metrics, outbox metrics, DLT metrics, and correlation-aware logs.
+- React, TypeScript, Vite and Tailwind backoffice UI for demonstrating the event flow visually.
 - Unit and application tests for domain behavior, idempotency, outbox creation, outbox publishing, and audit registration.
 
 Not implemented yet:
@@ -195,6 +197,60 @@ Relevant database tables:
 Expected flow:
 
 `POST /api/orders` creates an order in `order_schema.orders` and stores an `OrderCreatedEvent` in `order_schema.outbox_events`. The order outbox publisher sends it to `orders.events`. `payment-service` consumes it, stores the payment and processed event id, then stores a payment result event in `payment_schema.outbox_events`. The payment outbox publisher sends it to `payments.events`. `notification-service` consumes payment events, stores notifications and processed event ids, then stores notification result events in `notification_schema.outbox_events`. The notification outbox publisher sends them to `notifications.events`. `audit-service` consumes `orders.events`, `payments.events`, and `notifications.events`, and stores the complete event timeline in `audit_schema.audit_events`.
+
+## Backoffice UI
+
+The Backoffice UI is a React + TypeScript dashboard to interact with the EventFlow system visually.
+
+It allows you to:
+
+- Create orders.
+- Trigger successful payment, failed payment and DLT test flows.
+- Inspect payments and notifications by order id.
+- Inspect the audit timeline by order id.
+- Access Swagger, Kafka UI, Adminer, Prometheus and Grafana.
+- Demonstrate the full event-driven architecture visually.
+
+Run in development mode:
+
+```bash
+cd backoffice-ui
+npm install
+npm run dev
+```
+
+Development URL:
+
+```text
+http://localhost:5173
+```
+
+Run with Docker:
+
+```bash
+docker compose up -d --build
+```
+
+Docker URL:
+
+```text
+http://localhost:8086
+```
+
+Frontend environment variables:
+
+```env
+VITE_ORDER_SERVICE_URL=http://localhost:8081
+VITE_PAYMENT_SERVICE_URL=http://localhost:8082
+VITE_NOTIFICATION_SERVICE_URL=http://localhost:8083
+VITE_AUDIT_SERVICE_URL=http://localhost:8084
+VITE_KAFKA_UI_URL=http://localhost:8090
+VITE_ADMINER_URL=http://localhost:8085
+VITE_PROMETHEUS_URL=http://localhost:9090
+VITE_GRAFANA_URL=http://localhost:3000
+```
+
+The backend services must be running for the UI to create orders and load timelines. CORS is configured for `http://localhost:5173` and `http://localhost:8086`.
 
 ## Transactional Outbox
 

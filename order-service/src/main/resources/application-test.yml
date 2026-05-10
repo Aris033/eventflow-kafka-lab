@@ -35,6 +35,10 @@ management:
       application: order-service
 
 eventflow:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:8086
   outbox:
     publisher:
       enabled: false

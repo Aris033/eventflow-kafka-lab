@@ -22,6 +22,10 @@ spring:
       auto-offset-reset: earliest
 
 eventflow:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+      - http://localhost:8086
   audit:
     simulation:
       fail-on-event-type:
